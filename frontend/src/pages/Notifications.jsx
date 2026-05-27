@@ -42,11 +42,16 @@ export default function Notifications() {
         <DashboardLayout
             title="Notifications"
             subtitle="Updates from your courses and platform."
-            action={items.some((i) => !i.is_read) && (
-                <Button variant="outline" onClick={markAll} data-testid="mark-all-read-btn">
+            action={
+                <Button
+                    variant="outline"
+                    onClick={markAll}
+                    disabled={!items.some((i) => !i.is_read)}
+                    data-testid="mark-all-read-btn"
+                >
                     <CheckCheck className="mr-2 h-4 w-4" />Mark all read
                 </Button>
-            )}
+            }
         >
             {items.length === 0 ? (
                 <Card className="border-dashed border-slate-300 p-16 text-center">
