@@ -208,6 +208,7 @@ export default function CourseBuilder() {
                                                     <span className="text-slate-700">
                                                         {l.title}
                                                         {l.type === "QUIZ" && <span className="ml-2 inline-flex rounded bg-gold-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Quiz</span>}
+                                                        {l.type === "ASSIGNMENT" && <span className="ml-2 inline-flex rounded bg-brand-800 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Assignment</span>}
                                                     </span>
                                                     <div className="flex items-center gap-2">
                                                         <button
@@ -215,7 +216,14 @@ export default function CourseBuilder() {
                                                             className="text-xs font-medium text-brand-800 hover:underline"
                                                             data-testid={`build-quiz-${l.id}`}
                                                         >
-                                                            {l.type === "QUIZ" ? "Edit quiz" : "Add quiz"}
+                                                            {l.type === "QUIZ" ? "Edit quiz" : "+ Quiz"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => navigate(`/educator/assignment/${l.id}`)}
+                                                            className="text-xs font-medium text-brand-800 hover:underline"
+                                                            data-testid={`build-assignment-${l.id}`}
+                                                        >
+                                                            {l.type === "ASSIGNMENT" ? "Edit assign." : "+ Assign."}
                                                         </button>
                                                         <button onClick={() => deleteLesson(l.id)} className="text-slate-400 hover:text-red-500">
                                                             <Trash2 className="h-3.5 w-3.5" />

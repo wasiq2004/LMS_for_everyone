@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File, Header
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -26,13 +26,18 @@ from auth import (
     MAX_FAILED_ATTEMPTS, LOCKOUT_MINUTES,
 )
 from db_utils import serialize_doc, slugify, safe_object_id
+import socketio
 from models import (
     RegisterIn, LoginIn, ForgotPasswordIn, ResetPasswordIn,
     CategoryIn, CourseIn, CourseUpdate,
     SectionIn, LessonIn, ProgressIn, ReviewIn,
     UserRoleUpdate, ProfileUpdate,
     QuizIn, QuizSubmitIn, DiscussionIn, AnnouncementIn, SettingIn,
+    AssignmentIn, SubmissionTextIn, GradeIn,
 )
+from email_service import send_email, welcome_email, reset_password_email, enrollment_email, certificate_email
+from storage import init_storage, put_object, get_object, make_path
+from socket_io import sio, push_notification
 
 # ---------- DB ----------
 mongo_url = os.environ["MONGO_URL"]
@@ -45,6 +50,24 @@ api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("lms")
+
+
+async def create_notification(user_id, ntype: str, title: str, message: str, link: str = "") -> dict:
+    """Persist a notification and push it over Socket.IO."""
+    doc = {
+        "user_id": user_id if isinstance(user_id, ObjectId) else ObjectId(user_id),
+        "type": ntype,
+        "title": title,
+        "message": message,
+        "link": link,
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc),
+    }
+    res = await db.notifications.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    payload = serialize_doc(doc)
+    await push_notification(str(doc["user_id"]), payload)
+    return payload
 
 
 # ===========================================================
@@ -71,6 +94,13 @@ async def register(payload: RegisterIn, response: Response):
     res = await db.users.insert_one(user_doc)
     user_doc["_id"] = res.inserted_id
     user_out = serialize_user(user_doc)
+
+    # Welcome email (async, no-op if Resend not configured)
+    try:
+        subj, html = welcome_email(payload.first_name)
+        await send_email(email, subj, html)
+    except Exception as e:
+        logger.warning("welcome email failed: %s", e)
 
     access = create_access_token(user_out["id"], email, payload.role)
     refresh = create_refresh_token(user_out["id"])
@@ -177,6 +207,11 @@ async def forgot_password(payload: ForgotPasswordIn):
         frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
         reset_link = f"{frontend_url}/reset-password/{token}"
         logger.info(f"[MOCK EMAIL] Password reset link for {payload.email}: {reset_link}")
+        try:
+            subj, html = reset_password_email(reset_link)
+            await send_email(payload.email, subj, html)
+        except Exception as e:
+            logger.warning("reset email failed: %s", e)
     return {"success": True, "message": "If that email exists, a reset link has been sent."}
 
 
@@ -529,6 +564,17 @@ async def enroll(body: dict, user=Depends(get_current_user)):
     res = await db.enrollments.insert_one(doc)
     await db.courses.update_one({"_id": oid}, {"$inc": {"total_enrollments": 1}})
     doc["_id"] = res.inserted_id
+
+    # Notification + email (live push via socket if connected)
+    try:
+        frontend_url = os.environ.get("FRONTEND_URL", "")
+        course_url = f"{frontend_url}/learn/{course.get('slug', '')}"
+        await create_notification(user_oid, "ENROLLMENT", f"Enrolled in {course['title']}", "You're all set — start learning anytime.", f"/learn/{course.get('slug', '')}")
+        subj, html = enrollment_email(user.get("first_name", "there"), course["title"], course_url)
+        await send_email(user["email"], subj, html)
+    except Exception as e:
+        logger.warning("enrollment side-effects failed: %s", e)
+
     return {"success": True, "data": serialize_doc(doc)}
 
 
@@ -579,16 +625,20 @@ async def update_progress(enrollment_id: str, payload: ProgressIn, user=Depends(
         u = await db.users.find_one({"_id": enr["user_id"]})
         course = await db.courses.find_one({"_id": enr["course_id"]})
         if u and course:
-            await _ensure_certificate(enr, u, course)
-            await db.notifications.insert_one({
-                "user_id": enr["user_id"],
-                "type": "CERTIFICATE",
-                "title": "Certificate earned!",
-                "message": f"You completed {course['title']}",
-                "link": "/dashboard/certificates",
-                "is_read": False,
-                "created_at": datetime.now(timezone.utc),
-            })
+            cert = await _ensure_certificate(enr, u, course)
+            await create_notification(
+                enr["user_id"], "CERTIFICATE",
+                "Certificate earned!",
+                f"You completed {course['title']}",
+                "/dashboard/certificates",
+            )
+            try:
+                frontend_url = os.environ.get("FRONTEND_URL", "")
+                verify_url = f"{frontend_url}/certificate/verify?cert={cert.get('certificate_number','')}"
+                subj, html = certificate_email(u.get("first_name", "there"), course["title"], cert.get("certificate_number", ""), verify_url)
+                await send_email(u["email"], subj, html)
+            except Exception as e:
+                logger.warning("certificate email failed: %s", e)
     return {"success": True, "data": serialize_doc(enr)}
 
 
@@ -1062,16 +1112,13 @@ async def create_announcement(payload: AnnouncementIn, user=Depends(require_role
     res = await db.announcements.insert_one(doc)
     doc["_id"] = res.inserted_id
     if course_oid:
+        course = await db.courses.find_one({"_id": course_oid})
+        slug = course.get("slug", "") if course else ""
         async for e in db.enrollments.find({"course_id": course_oid}, {"user_id": 1}):
-            await db.notifications.insert_one({
-                "user_id": e["user_id"],
-                "type": "ANNOUNCEMENT",
-                "title": payload.title,
-                "message": payload.content[:140],
-                "link": f"/learn/{course_oid}",
-                "is_read": False,
-                "created_at": datetime.now(timezone.utc),
-            })
+            await create_notification(
+                e["user_id"], "ANNOUNCEMENT",
+                payload.title, payload.content[:140], f"/learn/{slug}",
+            )
     return {"success": True, "data": serialize_doc(doc)}
 
 
@@ -1396,6 +1443,175 @@ async def list_instructors():
     return {"success": True, "data": out}
 
 
+# ===========================================================
+# ASSIGNMENTS
+# ===========================================================
+@api.post("/assignments")
+async def create_assignment(payload: AssignmentIn, user=Depends(require_roles(["EDUCATOR", "ADMIN"]))):
+    lesson_oid = safe_object_id(payload.lesson_id)
+    lesson = await db.lessons.find_one({"_id": lesson_oid})
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    if not await _user_owns_course(user, lesson["course_id"]):
+        raise HTTPException(status_code=403, detail="Not your course")
+    existing = await db.assignments.find_one({"lesson_id": lesson_oid})
+    due = None
+    if payload.due_date:
+        try:
+            due = datetime.fromisoformat(payload.due_date.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    doc = {
+        "lesson_id": lesson_oid,
+        "course_id": lesson["course_id"],
+        "title": payload.title,
+        "instructions": payload.instructions,
+        "due_date": due,
+        "max_score": payload.max_score,
+        "allowed_file_types": payload.allowed_file_types,
+        "max_file_size_mb": payload.max_file_size_mb,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if existing:
+        await db.assignments.update_one({"_id": existing["_id"]}, {"$set": doc})
+        doc["_id"] = existing["_id"]
+    else:
+        doc["created_at"] = datetime.now(timezone.utc)
+        res = await db.assignments.insert_one(doc)
+        doc["_id"] = res.inserted_id
+    await db.lessons.update_one({"_id": lesson_oid}, {"$set": {"type": "ASSIGNMENT"}})
+    return {"success": True, "data": serialize_doc(doc)}
+
+
+@api.get("/assignments/lesson/{lesson_id}")
+async def get_assignment_for_lesson(lesson_id: str, user=Depends(get_current_user)):
+    a = await db.assignments.find_one({"lesson_id": safe_object_id(lesson_id)})
+    if not a:
+        raise HTTPException(status_code=404, detail="No assignment for this lesson")
+    out = serialize_doc(a)
+    sub = await db.assignment_submissions.find_one({
+        "assignment_id": a["_id"],
+        "user_id": safe_object_id(user["id"]),
+    })
+    out["my_submission"] = serialize_doc(sub) if sub else None
+    return {"success": True, "data": out}
+
+
+@api.post("/files/upload")
+async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
+    contents = await file.read()
+    if len(contents) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File exceeds 20MB limit")
+    name = file.filename or "upload"
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "bin"
+    path = make_path(user["id"], ext)
+    try:
+        put_object(path, contents, file.content_type or "application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    return {"success": True, "data": {
+        "path": path,
+        "url": f"/api/files/{path}",
+        "name": name,
+        "size": len(contents),
+        "content_type": file.content_type,
+    }}
+
+
+@api.get("/files/{full_path:path}")
+async def download_object(full_path: str):
+    from fastapi.responses import Response as FastResponse
+    try:
+        data, ctype = get_object(full_path)
+        return FastResponse(content=data, media_type=ctype)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api.post("/assignments/{assignment_id}/submit")
+async def submit_assignment(assignment_id: str, body: dict, user=Depends(get_current_user)):
+    aid = safe_object_id(assignment_id)
+    a = await db.assignments.find_one({"_id": aid})
+    if not a:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    enr = await db.enrollments.find_one({"user_id": safe_object_id(user["id"]), "course_id": a["course_id"]})
+    if not enr:
+        raise HTTPException(status_code=403, detail="You must be enrolled")
+    sub_doc = {
+        "assignment_id": aid,
+        "user_id": safe_object_id(user["id"]),
+        "enrollment_id": enr["_id"],
+        "course_id": a["course_id"],
+        "lesson_id": a["lesson_id"],
+        "text_content": body.get("text_content", ""),
+        "file_urls": body.get("file_urls", []),
+        "status": "SUBMITTED",
+        "submitted_at": datetime.now(timezone.utc),
+    }
+    existing = await db.assignment_submissions.find_one({"assignment_id": aid, "user_id": sub_doc["user_id"]})
+    if existing:
+        await db.assignment_submissions.update_one({"_id": existing["_id"]}, {"$set": sub_doc})
+        sub_doc["_id"] = existing["_id"]
+    else:
+        res = await db.assignment_submissions.insert_one(sub_doc)
+        sub_doc["_id"] = res.inserted_id
+    return {"success": True, "data": serialize_doc(sub_doc)}
+
+
+@api.get("/assignments/{assignment_id}/submissions")
+async def list_assignment_submissions(assignment_id: str, user=Depends(require_roles(["EDUCATOR", "ADMIN"]))):
+    aid = safe_object_id(assignment_id)
+    a = await db.assignments.find_one({"_id": aid})
+    if not a:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if not await _user_owns_course(user, a["course_id"]):
+        raise HTTPException(status_code=403, detail="Not your course")
+    cursor = db.assignment_submissions.find({"assignment_id": aid}).sort([("submitted_at", -1)])
+    out = []
+    async for s in cursor:
+        s_out = serialize_doc(s)
+        u = await db.users.find_one({"_id": s["user_id"]})
+        if u:
+            s_out["user"] = {"id": str(u["_id"]), "first_name": u.get("first_name"), "last_name": u.get("last_name"),
+                             "email": u.get("email"), "avatar": u.get("avatar", "")}
+        out.append(s_out)
+    return {"success": True, "data": out}
+
+
+@api.patch("/assignments/submissions/{submission_id}/grade")
+async def grade_submission(submission_id: str, payload: GradeIn, user=Depends(require_roles(["EDUCATOR", "ADMIN"]))):
+    sid = safe_object_id(submission_id)
+    sub = await db.assignment_submissions.find_one({"_id": sid})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if not await _user_owns_course(user, sub["course_id"]):
+        raise HTTPException(status_code=403, detail="Not your course")
+    a = await db.assignments.find_one({"_id": sub["assignment_id"]})
+    max_score = (a or {}).get("max_score", 100)
+    score = max(0, min(payload.score, max_score))
+    await db.assignment_submissions.update_one(
+        {"_id": sid},
+        {"$set": {
+            "score": score, "feedback": payload.feedback or "",
+            "status": "GRADED",
+            "graded_at": datetime.now(timezone.utc),
+            "graded_by": safe_object_id(user["id"]),
+        }},
+    )
+    course = await db.courses.find_one({"_id": sub["course_id"]})
+    slug = course.get("slug", "") if course else ""
+    await create_notification(
+        sub["user_id"], "GRADE",
+        f"Assignment graded: {a.get('title', '')}",
+        f"You scored {score} / {max_score}",
+        f"/learn/{slug}",
+    )
+    new_sub = await db.assignment_submissions.find_one({"_id": sid})
+    return {"success": True, "data": serialize_doc(new_sub)}
+
+
+
+
 
 app.include_router(api)
 
@@ -1432,10 +1648,19 @@ async def on_startup():
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.discussions.create_index([("course_id", 1), ("created_at", -1)])
     await db.settings.create_index("key", unique=True)
+    await db.assignments.create_index("lesson_id", unique=True)
+    await db.assignment_submissions.create_index([("assignment_id", 1), ("user_id", 1)], unique=True)
 
     from seed import seed_database, write_test_credentials
     await seed_database(db)
     await write_test_credentials()
+
+    # Init object storage (no-op if EMERGENT_LLM_KEY missing)
+    try:
+        init_storage()
+    except Exception as e:
+        logger.warning("storage init: %s", e)
+
     logger.info("LMS startup complete — database seeded")
 
 
@@ -1447,3 +1672,11 @@ async def on_shutdown():
 @api.get("/")
 async def root():
     return {"success": True, "message": "LearnHub LMS API"}
+
+
+# ---------- Mount Socket.IO over the FastAPI ASGI app ----------
+# Wrap our FastAPI app inside socket.io's ASGI app so the same uvicorn process
+# serves both REST endpoints AND websockets at /socket.io. Supervisor imports
+# `server:app`, so we re-bind `app` to the combined ASGI app at the end.
+_fastapi_app = app
+app = socketio.ASGIApp(sio, other_asgi_app=_fastapi_app, socketio_path="socket.io")

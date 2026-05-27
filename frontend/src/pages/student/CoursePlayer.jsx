@@ -161,6 +161,19 @@ export default function CoursePlayer() {
                                     Start quiz
                                 </Button>
                             </div>
+                        ) : activeLesson.type === "ASSIGNMENT" ? (
+                            <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-brand-900 to-slate-900 text-white">
+                                <div className="text-xs font-semibold uppercase tracking-widest text-gold-400">Assignment</div>
+                                <h3 className="mt-2 font-display text-2xl font-bold">{activeLesson.title}</h3>
+                                <p className="mt-2 max-w-md text-center text-sm text-white/70">Submit your work for instructor review.</p>
+                                <Button
+                                    className="mt-6 bg-gold-500 hover:bg-gold-600"
+                                    onClick={() => navigate(`/assignment/${activeLesson.id}`)}
+                                    data-testid="open-assignment-btn"
+                                >
+                                    Open assignment
+                                </Button>
+                            </div>
                         ) : activeLesson.video_url ? (
                             <iframe
                                 title={activeLesson.title}

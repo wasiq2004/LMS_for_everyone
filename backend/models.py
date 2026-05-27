@@ -168,6 +168,28 @@ class AnnouncementIn(BaseModel):
 
 
 # ---------- SETTINGS ----------
+
+
+# ---------- ASSIGNMENTS ----------
+class AssignmentIn(BaseModel):
+    lesson_id: str
+    title: str
+    instructions: Optional[str] = ""
+    due_date: Optional[str] = None  # ISO string
+    max_score: int = 100
+    allowed_file_types: List[str] = ["pdf", "doc", "docx", "txt", "png", "jpg", "zip"]
+    max_file_size_mb: int = 20
+
+
+class SubmissionTextIn(BaseModel):
+    assignment_id: str
+    text_content: Optional[str] = ""
+
+
+class GradeIn(BaseModel):
+    score: int
+    feedback: Optional[str] = ""
+
 class SettingIn(BaseModel):
     key: str
     value: str

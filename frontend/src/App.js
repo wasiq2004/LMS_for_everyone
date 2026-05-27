@@ -2,6 +2,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 import Landing from "@/pages/Landing";
@@ -20,12 +21,14 @@ import StudentDashboard from "@/pages/student/StudentDashboard";
 import MyCourses from "@/pages/student/MyCourses";
 import CoursePlayer from "@/pages/student/CoursePlayer";
 import QuizView from "@/pages/student/QuizView";
+import AssignmentView from "@/pages/student/AssignmentView";
 import Certificates from "@/pages/student/Certificates";
 
 import EducatorDashboard from "@/pages/educator/EducatorDashboard";
 import EducatorCourses from "@/pages/educator/EducatorCourses";
 import CourseBuilder from "@/pages/educator/CourseBuilder";
 import QuizBuilder from "@/pages/educator/QuizBuilder";
+import AssignmentBuilder from "@/pages/educator/AssignmentBuilder";
 import EducatorEarnings from "@/pages/educator/EducatorEarnings";
 
 import AdminDashboard from "@/pages/admin/AdminDashboard";
@@ -48,7 +51,8 @@ export default function App() {
         <div className="App">
             <BrowserRouter>
                 <AuthProvider>
-                    <Toaster position="top-right" richColors closeButton />
+                    <NotificationProvider>
+                        <Toaster position="top-right" richColors closeButton />
                     <Routes>
                         {/* Public */}
                         <Route path="/" element={<Landing />} />
@@ -71,6 +75,7 @@ export default function App() {
                         <Route path="/dashboard/announcements" element={<ProtectedRoute><Announcements /></ProtectedRoute>} />
                         <Route path="/learn/:slug" element={<ProtectedRoute><CoursePlayer /></ProtectedRoute>} />
                         <Route path="/quiz/:lessonId" element={<ProtectedRoute><QuizView /></ProtectedRoute>} />
+                        <Route path="/assignment/:lessonId" element={<ProtectedRoute><AssignmentView /></ProtectedRoute>} />
 
                         {/* Educator */}
                         <Route path="/educator/dashboard" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><EducatorDashboard /></ProtectedRoute>} />
@@ -78,6 +83,7 @@ export default function App() {
                         <Route path="/educator/courses/new" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><CourseBuilder /></ProtectedRoute>} />
                         <Route path="/educator/courses/:id/edit" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><CourseBuilder /></ProtectedRoute>} />
                         <Route path="/educator/quiz/:lessonId" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><QuizBuilder /></ProtectedRoute>} />
+                        <Route path="/educator/assignment/:lessonId" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><AssignmentBuilder /></ProtectedRoute>} />
                         <Route path="/educator/earnings" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><EducatorEarnings /></ProtectedRoute>} />
                         <Route path="/educator/announcements" element={<ProtectedRoute roles={["EDUCATOR", "ADMIN"]}><Announcements /></ProtectedRoute>} />
 
@@ -92,6 +98,7 @@ export default function App() {
 
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
+                    </NotificationProvider>
                 </AuthProvider>
             </BrowserRouter>
         </div>

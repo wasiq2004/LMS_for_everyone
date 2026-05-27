@@ -46,7 +46,9 @@ export default function Navbar() {
                             </Button>
                         </>
                     ) : (
-                        <DropdownMenu>
+                        <>
+                            <NotificationBell />
+                            <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <button className="flex items-center gap-2 rounded-full p-1 hover:bg-slate-100" data-testid="navbar-user-menu">
                                     <Avatar className="h-9 w-9">
@@ -78,6 +80,7 @@ export default function Navbar() {
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
+                        </>
                     )}
                 </div>
             </div>

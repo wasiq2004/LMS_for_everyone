@@ -1,5 +1,5 @@
 import Sidebar from "@/components/Sidebar";
-import { Bell } from "lucide-react";
+import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function DashboardLayout({ children, title, subtitle, action }) {
@@ -16,9 +16,7 @@ export default function DashboardLayout({ children, title, subtitle, action }) {
                         </div>
                         <div className="flex items-center gap-4">
                             {action}
-                            <button className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900" data-testid="notifications-btn">
-                                <Bell className="h-5 w-5" />
-                            </button>
+                            <NotificationBell />
                             <div className="hidden text-right md:block">
                                 <div className="text-sm font-semibold text-slate-900">{user?.first_name} {user?.last_name}</div>
                                 <div className="text-xs text-slate-500 uppercase tracking-wider">{user?.role}</div>
