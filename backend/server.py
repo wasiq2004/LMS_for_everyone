@@ -278,12 +278,18 @@ async def reset_password(payload: ResetPasswordIn):
 @api.get("/categories")
 async def list_categories():
     docs = await db.categories.find({"is_active": True}).to_list(100)
-    # Add course counts
+    if not docs:
+        return {"success": True, "data": []}
+    # Aggregate published-course counts in a single query
+    pipeline = [
+        {"$match": {"status": "PUBLISHED"}},
+        {"$group": {"_id": "$category_id", "count": {"$sum": 1}}},
+    ]
+    counts = {doc["_id"]: doc["count"] async for doc in db.courses.aggregate(pipeline)}
     out = []
     for c in docs:
-        count = await db.courses.count_documents({"category_id": c["_id"], "status": "PUBLISHED"})
         d = serialize_doc(c)
-        d["course_count"] = count
+        d["course_count"] = counts.get(c["_id"], 0)
         out.append(d)
     return {"success": True, "data": out}
 
@@ -1013,18 +1019,35 @@ async def list_discussions(course_id: Optional[str] = None, lesson_id: Optional[
     cursor = db.discussions.find(query).sort([("is_pinned", -1), ("created_at", -1)]).limit(100)
     threads = []
     async for d in cursor:
-        reply_count = await db.discussions.count_documents({"parent_id": d["_id"]})
+        threads.append(d)
+    if not threads:
+        return {"success": True, "data": []}
+    # Bulk fetch reply counts + authors to avoid N+1
+    thread_ids = [t["_id"] for t in threads]
+    user_ids = list({t["user_id"] for t in threads})
+    reply_counts = {
+        x["_id"]: x["count"]
+        async for x in db.discussions.aggregate([
+            {"$match": {"parent_id": {"$in": thread_ids}}},
+            {"$group": {"_id": "$parent_id", "count": {"$sum": 1}}},
+        ])
+    }
+    users_by_id = {}
+    async for u in db.users.find({"_id": {"$in": user_ids}}):
+        users_by_id[u["_id"]] = u
+    out = []
+    for d in threads:
         d_out = serialize_doc(d)
-        d_out["reply_count"] = reply_count
-        u = await db.users.find_one({"_id": d["user_id"]})
+        d_out["reply_count"] = reply_counts.get(d["_id"], 0)
+        u = users_by_id.get(d["user_id"])
         if u:
             d_out["author"] = {
                 "id": str(u["_id"]),
                 "first_name": u.get("first_name"), "last_name": u.get("last_name"),
                 "avatar": u.get("avatar", ""), "role": u.get("role"),
             }
-        threads.append(d_out)
-    return {"success": True, "data": threads}
+        out.append(d_out)
+    return {"success": True, "data": out}
 
 
 @api.get("/discussions/{thread_id}")
@@ -1715,16 +1738,28 @@ async def health_check():
 app.include_router(api)
 
 # ---------- CORS ----------
-origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
-if not origins:
-    origins = ["http://localhost:3000"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors_raw = os.environ.get("CORS_ORIGINS", "").strip()
+if _cors_raw == "*" or _cors_raw == "":
+    # Permissive wildcard mode — allow any origin via regex, but per CORS spec
+    # browsers reject credentials with "*". The frontend uses both cookies AND
+    # localStorage Bearer tokens, so disabling credentials is acceptable: Bearer
+    # tokens still authenticate every request.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=".*",
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # ---------- STARTUP ----------
