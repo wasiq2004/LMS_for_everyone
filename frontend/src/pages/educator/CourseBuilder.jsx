@@ -205,10 +205,22 @@ export default function CourseBuilder() {
                                         <ul className="mt-3 space-y-1.5">
                                             {(s.lessons || []).map((l) => (
                                                 <li key={l.id} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm">
-                                                    <span className="text-slate-700">{l.title}</span>
-                                                    <button onClick={() => deleteLesson(l.id)} className="text-slate-400 hover:text-red-500">
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </button>
+                                                    <span className="text-slate-700">
+                                                        {l.title}
+                                                        {l.type === "QUIZ" && <span className="ml-2 inline-flex rounded bg-gold-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Quiz</span>}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => navigate(`/educator/quiz/${l.id}`)}
+                                                            className="text-xs font-medium text-brand-800 hover:underline"
+                                                            data-testid={`build-quiz-${l.id}`}
+                                                        >
+                                                            {l.type === "QUIZ" ? "Edit quiz" : "Add quiz"}
+                                                        </button>
+                                                        <button onClick={() => deleteLesson(l.id)} className="text-slate-400 hover:text-red-500">
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
                                                 </li>
                                             ))}
                                         </ul>

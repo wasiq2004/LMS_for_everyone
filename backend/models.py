@@ -118,3 +118,59 @@ class ProfileUpdate(BaseModel):
     last_name: Optional[str] = None
     bio: Optional[str] = None
     avatar: Optional[str] = None
+
+
+# ---------- QUIZZES ----------
+class QuizOption(BaseModel):
+    text: str
+    is_correct: bool = False
+
+
+class QuestionIn(BaseModel):
+    text: str
+    type: Literal["MULTIPLE_CHOICE", "SINGLE_CHOICE", "TRUE_FALSE"] = "SINGLE_CHOICE"
+    points: int = 1
+    explanation: Optional[str] = ""
+    options: List[QuizOption] = []
+
+
+class QuizIn(BaseModel):
+    lesson_id: str
+    title: str
+    instructions: Optional[str] = ""
+    passing_score: int = 60
+    time_limit: int = 0  # minutes; 0 = no limit
+    attempts_allowed: int = 0  # 0 = unlimited
+    shuffle_questions: bool = False
+    questions: List[QuestionIn] = []
+
+
+class QuizSubmitIn(BaseModel):
+    # answers: { question_index: [selected_option_indexes] }
+    answers: dict = {}
+    time_spent: int = 0
+
+
+# ---------- DISCUSSIONS ----------
+class DiscussionIn(BaseModel):
+    course_id: str
+    lesson_id: Optional[str] = None
+    parent_id: Optional[str] = None
+    title: Optional[str] = None
+    content: str
+
+
+# ---------- ANNOUNCEMENTS ----------
+class AnnouncementIn(BaseModel):
+    course_id: Optional[str] = None  # None = platform-wide
+    title: str
+    content: str
+
+
+# ---------- SETTINGS ----------
+class SettingIn(BaseModel):
+    key: str
+    value: str
+    group: Optional[str] = "general"
+    description: Optional[str] = ""
+

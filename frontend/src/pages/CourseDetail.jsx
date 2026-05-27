@@ -10,6 +10,7 @@ import { Star, Clock, Users, BookOpen, CheckCircle2, PlayCircle, Loader2, Lock }
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import ReviewForm from "@/components/ReviewForm";
 
 export default function CourseDetail() {
     const { slug } = useParams();
@@ -161,11 +162,16 @@ export default function CourseDetail() {
                         </Card>
                     )}
 
-                    {course.reviews?.length > 0 && (
+                    {(course.is_enrolled || course.reviews?.length > 0) && (
                         <div>
                             <h2 className="font-display text-xl font-bold text-slate-900">Student reviews</h2>
+                            {course.is_enrolled && (
+                                <div className="mt-4">
+                                    <ReviewForm courseId={course.id} onSaved={load} />
+                                </div>
+                            )}
                             <div className="mt-4 space-y-3">
-                                {course.reviews.map((r) => (
+                                {(course.reviews || []).map((r) => (
                                     <Card key={r.id} className="border-slate-200 p-5">
                                         <div className="flex items-start gap-3">
                                             <Avatar className="h-9 w-9"><AvatarFallback className="bg-brand-800 text-white text-xs">{r.user?.first_name?.[0] || "S"}</AvatarFallback></Avatar>

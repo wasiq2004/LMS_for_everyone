@@ -18,6 +18,7 @@ const EDUCATOR_LINKS = [
     { to: "/educator/dashboard", label: "Overview", icon: LayoutDashboard, end: true },
     { to: "/educator/courses", label: "My Courses", icon: BookOpen },
     { to: "/educator/courses/new", label: "Create Course", icon: Pencil },
+    { to: "/educator/announcements", label: "Announcements", icon: Bell },
     { to: "/educator/earnings", label: "Earnings", icon: Wallet },
     { to: "/dashboard/profile", label: "Profile", icon: User },
 ];
@@ -27,6 +28,7 @@ const ADMIN_LINKS = [
     { to: "/admin/users", label: "Users", icon: Users },
     { to: "/admin/courses", label: "Courses", icon: BookOpen },
     { to: "/admin/categories", label: "Categories", icon: FolderTree },
+    { to: "/admin/announcements", label: "Announcements", icon: Bell },
     { to: "/admin/reports", label: "Reports", icon: BarChart3 },
     { to: "/admin/settings", label: "Settings", icon: Settings },
 ];

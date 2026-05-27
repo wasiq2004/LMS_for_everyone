@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CheckCircle2, ChevronLeft, ChevronRight, PlayCircle, Loader2, ArrowLeft } from "lucide-react";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
+import DiscussionsTab from "@/components/DiscussionsTab";
 
 function youtubeEmbed(url) {
     if (!url) return null;
@@ -147,7 +148,20 @@ export default function CoursePlayer() {
 
                 <div className="mx-auto max-w-5xl p-6">
                     <div className="aspect-video w-full overflow-hidden rounded-xl border border-slate-200 bg-black shadow-lg">
-                        {activeLesson.video_url ? (
+                        {activeLesson.type === "QUIZ" ? (
+                            <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-brand-800 to-brand-900 text-white">
+                                <div className="text-xs font-semibold uppercase tracking-widest text-gold-400">Quiz</div>
+                                <h3 className="mt-2 font-display text-2xl font-bold">{activeLesson.title}</h3>
+                                <p className="mt-2 max-w-md text-center text-sm text-white/70">Take the quiz when you're ready.</p>
+                                <Button
+                                    className="mt-6 bg-gold-500 hover:bg-gold-600"
+                                    onClick={() => navigate(`/quiz/${activeLesson.id}`)}
+                                    data-testid="take-quiz-btn"
+                                >
+                                    Start quiz
+                                </Button>
+                            </div>
+                        ) : activeLesson.video_url ? (
                             <iframe
                                 title={activeLesson.title}
                                 src={youtubeEmbed(activeLesson.video_url)}
@@ -175,8 +189,8 @@ export default function CoursePlayer() {
                                 ? <p className="text-sm text-slate-500">No resources for this lesson.</p>
                                 : <ul className="space-y-2 text-sm">{activeLesson.resources.map((r, i) => <li key={i}><a className="text-brand-800 hover:underline" href={r.url}>{r.name}</a></li>)}</ul>}
                         </TabsContent>
-                        <TabsContent value="qa" className="mt-4 rounded-xl border border-slate-200 bg-white p-6">
-                            <p className="text-sm text-slate-500">Discussion threads coming soon.</p>
+                        <TabsContent value="qa" className="mt-4">
+                            <DiscussionsTab courseId={course.id} lessonId={activeLesson.id} />
                         </TabsContent>
                     </Tabs>
 

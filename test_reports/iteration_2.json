@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 LMS testing — 28 new backend tests covering Quizzes (create/overwrite/role-scoping/answer-hiding/auto-grade single+multi/attempts), Certificates (generate/idempotent/verify-public/PDF download/incomplete-400/bad-404), Discussions (create/list/replies/upvote/pin/resolve), Announcements (educator/admin/platform-wide guardrails), Notifications (list+unread_count+mark-all), Settings (admin CRUD + non-admin forbidden), Earnings (70% net rule), Reports overview, Reviews list, Instructors public — ALL 28 PASS (100%). Frontend smoke: verify page public + ?cert= deep-link works, valid cert shows Verified state, invalid shows 'Certificate not found'; forgot/reset password render; /dashboard/certificates shows Alex's LH-EB32399A card with PDF+Verify; /educator/earnings shows 70/30 KPIs; /educator/announcements + /admin/announcements + /admin/settings + /admin/reports (with Export CSV) all render with updated sidebar links.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/notifications", "issue": "Response shape is {success, data:[notifs], unread_count} (sibling). Review-request brief described it as 'notifications + unread_count' inside data — minor doc/spec mismatch only; current shape is fine if frontend matches it."},
+      {"endpoint": "GET /api/admin/reports/overview", "issue": "Returns {data: {courses: [...]}} instead of flat array; review-request brief said 'returns course stats'. Working as implemented; spec wording mismatch."},
+      {"endpoint": "GET /api/certificates/*", "issue": "Field is named 'certificate_number' (not 'cert_number' as written in review-request brief). Consistent across my/verify/download/generate. Frontend already uses this name."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Notifications page (/dashboard/notifications)", "issue": "No 'Mark all read' button rendered. Backend endpoint PATCH /api/notifications/read-all exists and works, but the UI doesn't expose it. Spec required this button.", "selector": "button:has-text('Mark all')", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "Add a 'Mark all read' (and ideally per-notification 'Mark read') button to /app/frontend/src/pages/Notifications.jsx that calls PATCH /api/notifications/read-all and refreshes the list.",
+    "Optional: clean up TEST_ data created during this run — TEST_Quiz iter2 on Sarah's first lesson (overwrites real quiz if any existed), TEST_Q iter2 discussion thread + reply, TEST_Ann iter2 / TEST_PLATFORM iter2 announcements (a few duplicates from re-runs).",
+    "Optional: align response shapes with the review-request wording (notifications object, reports flat list) OR update product spec to match implementation. No functional impact."
+  ],
+  "critical_code_review_comments": [
+    "Quiz scoring is strict full-match (single & multi). For SINGLE_CHOICE this is correct; for MULTIPLE_CHOICE there is no partial-credit option which may be intentional but worth documenting in the UI ('all-or-nothing scoring per question').",
+    "_ensure_certificate uses {'enrollment_id': enrollment['_id']} as dedupe key — good; idempotent generate verified.",
+    "Educator earnings recalculates net as gross*0.7 at request time — fine for an MVP but means changing platform_fee_percent (admin setting) won't affect historical earnings until backend reads that setting.",
+    "list_notifications could include link/type/title for grouping — currently flat; UI shows raw message rows.",
+    "Discussion upvote toggles by adding/removing user_id from upvotes array — atomic via $addToSet/$pull recommended (verify the implementation between lines 991-1006)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py (created)"
+  ],
+  "success_rate": {"backend": "100% (28/28 iteration-2 tests)", "frontend": "~95% (all new routes load + integrate; only 'Mark all read' button missing from Notifications)"},
+  "test_credentials": "Used from /app/memory/test_credentials.md — all valid.",
+  "seed_data_creation": "Created TEST_Quiz iter2 (attached to Sarah's first lesson — may overwrite the original quiz on that lesson; cleanup recommended), TEST_Q iter2 discussion + reply, TEST_Ann iter2 announcements (educator+platform), TEST_setting_* (deleted at test end). Quiz attempts logged under Alex's account.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration-2 backend tests live at /app/backend/tests/test_iteration2.py (pytest, 28 cases, 100% pass). Iteration-1 tests still valid at backend_test.py. The actual API field name for certificates is 'certificate_number' (not 'cert_number' as worded in the review-request brief). /api/notifications returns {data:[...], unread_count:int} as siblings (NOT nested). /api/admin/reports/overview returns {data:{courses:[...]}}. Frontend Notifications page is missing the Mark-all-read button — easy fix for main agent. Alex Kim retains cert LH-EB32399A. WARNING: the iter2 quiz test overwrote whatever quiz was on Sarah's first lesson with TEST_Quiz iter2 (then restored a 2-question version of it). If iteration-3 needs the original quiz, main agent should reseed.",
+  "rca of the issue": "No new functional bugs found. The single UI gap (Notifications mark-all button) is a missing wiring of an existing backend endpoint — frontend Notifications.jsx never imports/calls /api/notifications/read-all."
+}
