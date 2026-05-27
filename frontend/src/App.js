@@ -16,6 +16,7 @@ import { ForgotPassword, ResetPassword } from "@/pages/AuthExtra";
 import InstructorProfile from "@/pages/InstructorProfile";
 import Announcements from "@/pages/Announcements";
 import Notifications from "@/pages/Notifications";
+import NotFound from "@/pages/NotFound";
 
 import StudentDashboard from "@/pages/student/StudentDashboard";
 import MyCourses from "@/pages/student/MyCourses";
@@ -96,7 +97,7 @@ export default function App() {
                         <Route path="/admin/settings" element={<ProtectedRoute roles={["ADMIN"]}><AdminSettings /></ProtectedRoute>} />
                         <Route path="/admin/announcements" element={<ProtectedRoute roles={["ADMIN"]}><Announcements /></ProtectedRoute>} />
 
-                        <Route path="*" element={<Navigate to="/" replace />} />
+                        <Route path="*" element={<NotFound />} />
                     </Routes>
                     </NotificationProvider>
                 </AuthProvider>

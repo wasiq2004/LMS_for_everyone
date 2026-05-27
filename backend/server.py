@@ -52,6 +52,45 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("lms")
 
 
+# ---------- Rate limiter ----------
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+
+def _client_id(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_id, default_limits=["120/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"success": False, "detail": exc.detail})
+    logger.exception("Unhandled error: %s", exc)
+    return JSONResponse(status_code=500, content={"success": False, "detail": "Internal server error"})
+
+
+
+
 async def create_notification(user_id, ntype: str, title: str, message: str, link: str = "") -> dict:
     """Persist a notification and push it over Socket.IO."""
     doc = {
@@ -74,7 +113,8 @@ async def create_notification(user_id, ntype: str, title: str, message: str, lin
 # AUTH ROUTES
 # ===========================================================
 @api.post("/auth/register")
-async def register(payload: RegisterIn, response: Response):
+@limiter.limit("5/minute")
+async def register(request: Request, payload: RegisterIn, response: Response):
     email = payload.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -192,7 +232,8 @@ async def me(user=Depends(get_current_user)):
 
 
 @api.post("/auth/forgot-password")
-async def forgot_password(payload: ForgotPasswordIn):
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, payload: ForgotPasswordIn):
     user = await db.users.find_one({"email": payload.email.lower()})
     # Always return success to avoid leaking emails
     if user:
@@ -1499,14 +1540,26 @@ async def get_assignment_for_lesson(lesson_id: str, user=Depends(get_current_use
 
 @api.post("/files/upload")
 async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
+    # Validate filename + extension
+    name = file.filename or "upload"
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "bin"
+    allowed = {"pdf", "doc", "docx", "txt", "md", "png", "jpg", "jpeg", "gif", "webp", "zip", "csv", "json", "py", "js", "ts", "html", "css", "mp3", "wav"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"File type .{ext} is not allowed")
+
+    # Read with size cap (avoid OOM)
     contents = await file.read()
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File exceeds 20MB limit")
-    name = file.filename or "upload"
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "bin"
+
+    # Validate declared content-type isn't suspicious
+    ctype = (file.content_type or "application/octet-stream").lower()
+    if "html" in ctype or "javascript" in ctype or "script" in ctype:
+        raise HTTPException(status_code=400, detail="Disallowed content type")
+
     path = make_path(user["id"], ext)
     try:
-        put_object(path, contents, file.content_type or "application/octet-stream")
+        put_object(path, contents, ctype)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
     return {"success": True, "data": {
@@ -1514,12 +1567,36 @@ async def upload_file(file: UploadFile = File(...), user=Depends(get_current_use
         "url": f"/api/files/{path}",
         "name": name,
         "size": len(contents),
-        "content_type": file.content_type,
+        "content_type": ctype,
     }}
 
 
 @api.get("/files/{full_path:path}")
-async def download_object(full_path: str):
+async def download_object(full_path: str, user=Depends(get_current_user)):
+    """Auth-gated file download.
+
+    Permissions: owner of the uploaded path OR an ADMIN OR an EDUCATOR whose
+    course contains a submission referencing this path. This protects
+    private assignment submissions from being scraped via URL guessing.
+    """
+    # Path format is "{APP_NAME}/uploads/{owner_id}/{uuid}.ext"
+    is_admin = user.get("role") == "ADMIN"
+    parts = full_path.split("/")
+    owner_id = parts[2] if len(parts) >= 4 and parts[1] == "uploads" else None
+    is_owner = owner_id == user["id"]
+    is_authorized = is_admin or is_owner
+
+    if not is_authorized and user.get("role") == "EDUCATOR":
+        # Allow educator if any submission referencing this file is in their course
+        sub = await db.assignment_submissions.find_one({
+            "file_urls": {"$elemMatch": {"path": full_path}},
+        })
+        if sub and await _user_owns_course(user, sub["course_id"]):
+            is_authorized = True
+
+    if not is_authorized:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     from fastapi.responses import Response as FastResponse
     try:
         data, ctype = get_object(full_path)
@@ -1613,6 +1690,28 @@ async def grade_submission(submission_id: str, payload: GradeIn, user=Depends(re
 
 
 
+@api.get("/")
+async def root():
+    return {"success": True, "message": "LearnHub LMS API", "version": "1.0.0"}
+
+
+@api.get("/health")
+async def health_check():
+    """Health endpoint with DB ping for load balancers and uptime monitors."""
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception as e:
+        db_ok = False
+        logger.warning("health: db ping failed: %s", e)
+    return {
+        "success": True,
+        "status": "healthy" if db_ok else "degraded",
+        "db": "up" if db_ok else "down",
+        "version": "1.0.0",
+    }
+
+
 app.include_router(api)
 
 # ---------- CORS ----------
@@ -1667,11 +1766,6 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     client.close()
-
-
-@api.get("/")
-async def root():
-    return {"success": True, "message": "LearnHub LMS API"}
 
 
 # ---------- Mount Socket.IO over the FastAPI ASGI app ----------
