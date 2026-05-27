@@ -1,0 +1,95 @@
+{
+  "theme": "Light",
+  "archetype": "4 (Swiss & High-Contrast) adapted for Education",
+  "design_philosophy": "Authority, clarity, and trust. Dense-but-clear information architecture with progressive disclosure. Using deep blue to ground the UI and gold to draw attention to key actions.",
+  "colors": {
+    "primary": "#1e40af",
+    "primary_hover": "#1e3a8a",
+    "accent": "#f59e0b",
+    "accent_hover": "#d97706",
+    "background": "#f8fafc",
+    "surface": "#ffffff",
+    "text_main": "#0f172a",
+    "text_muted": "#64748b",
+    "border": "#e2e8f0",
+    "sidebar_bg": "#1e40af",
+    "sidebar_text": "#ffffff",
+    "sidebar_active": "#1e3a8a",
+    "sidebar_accent": "#f59e0b",
+    "success": "#10b981",
+    "warning": "#f59e0b",
+    "error": "#ef4444"
+  },
+  "typography": {
+    "heading_font": "Plus Jakarta Sans",
+    "body_font": "Inter",
+    "h1": "text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900",
+    "h2": "text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-slate-900",
+    "h3": "text-xl sm:text-2xl font-semibold tracking-tight text-slate-900",
+    "h4": "text-lg sm:text-xl font-medium tracking-tight text-slate-900",
+    "body": "text-base font-normal leading-relaxed text-slate-700",
+    "small": "text-sm font-medium uppercase tracking-[0.2em] text-slate-500",
+    "label": "text-sm font-medium text-slate-900"
+  },
+  "spacing_and_layout": {
+    "container": "max-w-7xl mx-auto px-6 md:px-8",
+    "section_gap": "py-20 md:py-32",
+    "card_padding": "p-6 sm:p-8",
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "marketing_grid": "grid grid-cols-1 md:grid-cols-8 lg:grid-cols-12 gap-8 lg:gap-12",
+    "borderRadius": {
+      "card": "rounded-xl",
+      "button": "rounded-lg",
+      "badge": "rounded-full"
+    }
+  },
+  "surfaces_and_components": {
+    "marketing_header": "backdrop-blur-xl bg-white/80 border-b border-slate-200/50 sticky top-0 z-50",
+    "dashboard_sidebar": "w-64 bg-[#1e40af] text-white flex-shrink-0 min-h-screen",
+    "card": "bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200",
+    "primary_button": "bg-[#1e40af] text-white px-6 py-2.5 rounded-lg font-medium hover:bg-[#1e3a8a] transition-colors focus:ring-2 focus:ring-[#f59e0b] focus:ring-offset-2",
+    "accent_button": "bg-[#f59e0b] text-white px-6 py-2.5 rounded-lg font-medium hover:bg-[#d97706] transition-colors focus:ring-2 focus:ring-[#1e40af] focus:ring-offset-2",
+    "progress_bar_bg": "bg-slate-100 rounded-full h-2 overflow-hidden",
+    "progress_bar_fill": "bg-[#f59e0b] h-full rounded-full transition-all duration-500"
+  },
+  "interactions_and_motion": {
+    "hover_state": "opacity-90 transform -translate-y-0.5 transition-all duration-200",
+    "active_state": "scale-[0.98]",
+    "focus_state": "focus:outline-none focus:ring-2 focus:ring-[#f59e0b] focus:ring-offset-2",
+    "page_transition": "animate-in fade-in duration-300"
+  },
+  "media": {
+    "hero_background": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/eae26e5d-b97e-437c-99fd-58debe5155a0/images/313a7d058130c9e1d2a739c12732f9675321c1b8431603eb716f070914020c8d.png",
+      "description": "Abstract deep blue and gold geometric shapes for landing page hero."
+    },
+    "course_thumbnails": {
+      "web_development": "https://images.unsplash.com/photo-1515879218367-8466d910aaa4",
+      "data_science": "https://images.unsplash.com/photo-1551288049-bebda4e38f71",
+      "design": "https://images.pexels.com/photos/2324808/pexels-photo-2324808.jpeg",
+      "business": "https://static.prod-images.emergentagent.com/jobs/eae26e5d-b97e-437c-99fd-58debe5155a0/images/79ba574302868ce6036daad6374014553ee7029e90f2f5729f0c85c1ff53dfd6.png",
+      "marketing": "https://static.prod-images.emergentagent.com/jobs/eae26e5d-b97e-437c-99fd-58debe5155a0/images/b6c84f243765d17b4a68be1328d9fae238c8e57af475bbd778103bd5e47f54da.png"
+    },
+    "avatars": {
+      "instructor_1": "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e",
+      "instructor_2": "https://images.pexels.com/photos/12311567/pexels-photo-12311567.jpeg",
+      "student_1": "https://images.unsplash.com/photo-1494790108377-be9c29b29330"
+    },
+    "testimonials": {
+      "student_studying_1": "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2",
+      "student_studying_2": "https://images.pexels.com/photos/8199246/pexels-photo-8199246.jpeg"
+    }
+  },
+  "data_testid_rules": "All interactive elements (buttons, links, form inputs) and key informational components MUST have a data-testid attribute formatted in kebab-case representing their role. Examples: data-testid='enroll-button', data-testid='course-progress-bar', data-testid='sidebar-nav-link'.",
+  "instructions_to_main_agent": [
+    "Strictly use pure HTML/Tailwind for marketing layouts (no generic cards) to achieve overlapping/asymmetry where appropriate, but use Shadcn for standard elements.",
+    "For the dashboards (Student, Educator, Admin), use Shadcn components (tables, dialogs, charts) heavily. Ensure the layout is a 'Control Room' grid (dense, compact spacing).",
+    "Use lucide-react or @heroicons/react for iconography.",
+    "All navigation must be a deep blue sidebar with collapsible sections, except for the public landing page which should have a sticky top nav.",
+    "Do NOT use 'Inter' for headings. Use 'Plus Jakarta Sans'. Ensure tight tracking for headings.",
+    "No pure white (#ffffff) background for the main app surface—use #f8fafc (slate-50). Use #ffffff only inside cards to create depth.",
+    "Ensure all user-facing charts use rechart or shadcn/ui charts with primary (#1e40af) and accent (#f59e0b) colors.",
+    "When displaying course thumbnails, ensure they are max-h-[80vh] responsive and use the provided media URLs. DO NOT USE placeholder images.",
+    "Provide clear progress indicators everywhere (courses, quizzes, videos) using the defined progress_bar styles."
+  ]
+}
