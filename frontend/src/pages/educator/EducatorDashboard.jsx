@@ -22,7 +22,13 @@ export default function EducatorDashboard() {
         setStats(data.data);
     })(); }, []);
 
-    if (!stats) return <DashboardLayout title="Loading..."><Loader2 className="h-8 w-8 animate-spin text-brand-800" /></DashboardLayout>;
+    if (!stats) return (
+        <DashboardLayout title="Educator Studio" subtitle="Loading your data...">
+            <div className="grid gap-4 md:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => <div key={i} className="h-32 animate-pulse rounded-xl bg-white" />)}
+            </div>
+        </DashboardLayout>
+    );
 
     return (
         <DashboardLayout

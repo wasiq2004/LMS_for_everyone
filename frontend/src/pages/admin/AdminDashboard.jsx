@@ -21,7 +21,13 @@ export default function AdminDashboard() {
         setStats(data.data);
     })(); }, []);
 
-    if (!stats) return <DashboardLayout title="Loading..."><Loader2 className="h-8 w-8 animate-spin text-brand-800" /></DashboardLayout>;
+    if (!stats) return (
+        <DashboardLayout title="Admin Console" subtitle="Loading platform data...">
+            <div className="grid gap-4 md:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => <div key={i} className="h-32 animate-pulse rounded-xl bg-white" />)}
+            </div>
+        </DashboardLayout>
+    );
 
     const categoryPie = stats.top_courses?.reduce((acc, c) => {
         const name = c.category?.name || "Uncategorized";

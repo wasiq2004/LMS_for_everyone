@@ -77,16 +77,29 @@ async def register(payload: RegisterIn, response: Response):
     return {"success": True, "data": user_out, "access_token": access}
 
 
+def _as_utc(dt):
+    """Make a datetime tz-aware (assume UTC if naive). Returns None for None."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @api.post("/auth/login")
 async def login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.lower()
-    ip = request.client.host if request.client else "unknown"
-    identifier = f"{ip}:{email}"
+    # Behind k8s/ingress, request.client.host is the pod IP and varies per request.
+    # Prefer X-Forwarded-For (leftmost = originating client). For brute-force lockout
+    # we fall back to email-only to ensure protection regardless of proxy setup.
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
+    identifier = email  # email-only ensures consistent counting across ingress hops
 
     # Lockout check
     attempt_record = await db.login_attempts.find_one({"identifier": identifier})
     if attempt_record and attempt_record.get("count", 0) >= MAX_FAILED_ATTEMPTS:
-        locked_until = attempt_record.get("locked_until")
+        locked_until = _as_utc(attempt_record.get("locked_until"))
         if locked_until and locked_until > datetime.now(timezone.utc):
             raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
 
@@ -169,7 +182,10 @@ async def forgot_password(payload: ForgotPasswordIn):
 @api.post("/auth/reset-password")
 async def reset_password(payload: ResetPasswordIn):
     record = await db.password_reset_tokens.find_one({"token": payload.token, "used": False})
-    if not record or record.get("expires_at") < datetime.now(timezone.utc):
+    if not record:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    expires = _as_utc(record.get("expires_at"))
+    if expires is None or expires < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     await db.users.update_one(
         {"_id": record["user_id"]},
@@ -250,7 +266,9 @@ async def list_courses(
 ):
     query = {"status": "PUBLISHED"}
     if category:
-        cat = await db.categories.find_one({"slug": category}) or await db.categories.find_one({"_id": safe_object_id(category)}) if ObjectId.is_valid(category) else await db.categories.find_one({"slug": category})
+        cat = await db.categories.find_one({"slug": category})
+        if not cat and ObjectId.is_valid(category):
+            cat = await db.categories.find_one({"_id": ObjectId(category)})
         if cat:
             query["category_id"] = cat["_id"]
     if level:
