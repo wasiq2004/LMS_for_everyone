@@ -417,17 +417,21 @@ async def get_course_by_slug(slug: str, user=Depends(get_optional_user)):
         sections.append(section_out)
     course_out["sections"] = sections
 
-    # reviews
+    # reviews — bulk fetch users to avoid N+1
+    review_docs = await db.reviews.find({"course_id": course["_id"]}).sort([("created_at", -1)]).limit(20).to_list(20)
     reviews = []
-    async for r in db.reviews.find({"course_id": course["_id"]}).sort([("created_at", -1)]).limit(20):
-        r_out = serialize_doc(r)
-        u = await db.users.find_one({"_id": r["user_id"]})
-        if u:
-            r_out["user"] = {
-                "first_name": u.get("first_name"), "last_name": u.get("last_name"),
-                "avatar": u.get("avatar", ""),
-            }
-        reviews.append(r_out)
+    if review_docs:
+        review_user_ids = list({r["user_id"] for r in review_docs})
+        review_users = {u["_id"]: u async for u in db.users.find({"_id": {"$in": review_user_ids}})}
+        for r in review_docs:
+            r_out = serialize_doc(r)
+            u = review_users.get(r["user_id"])
+            if u:
+                r_out["user"] = {
+                    "first_name": u.get("first_name"), "last_name": u.get("last_name"),
+                    "avatar": u.get("avatar", ""),
+                }
+            reviews.append(r_out)
     course_out["reviews"] = reviews
 
     # enrollment status for current user
@@ -1240,11 +1244,15 @@ async def list_course_reviews(course_id: str, page: int = 1, limit: int = 20):
         if not c:
             return {"success": True, "data": []}
         course_oid = c["_id"]
-    cursor = db.reviews.find({"course_id": course_oid}).sort([("created_at", -1)]).skip((page - 1) * limit).limit(limit)
+    review_docs = await db.reviews.find({"course_id": course_oid}).sort([("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    if not review_docs:
+        return {"success": True, "data": []}
+    review_user_ids = list({r["user_id"] for r in review_docs})
+    users = {u["_id"]: u async for u in db.users.find({"_id": {"$in": review_user_ids}})}
     out = []
-    async for r in cursor:
+    for r in review_docs:
         r_out = serialize_doc(r)
-        u = await db.users.find_one({"_id": r["user_id"]})
+        u = users.get(r["user_id"])
         if u:
             r_out["user"] = {"first_name": u.get("first_name"), "last_name": u.get("last_name"), "avatar": u.get("avatar", "")}
         out.append(r_out)
